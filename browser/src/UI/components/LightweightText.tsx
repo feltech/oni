@@ -11,6 +11,7 @@ export interface ITextInputViewProps {
 
     defaultValue?: string
     InputComponent?: any
+    isModal?: boolean
 }
 
 export interface IInputProps extends ITextInputViewProps {
@@ -36,7 +37,11 @@ export class TextInputView extends React.PureComponent<ITextInputViewProps, {}> 
 
     public componentDidMount(): void {
         if (this._element) {
-            focusManager.pushFocus(this._element)
+            if (this.props.isModal) {
+                focusManager.pushModal(this._element)
+            } else {
+                focusManager.pushFocus(this._element)
+            }
         }
     }
 
@@ -70,7 +75,11 @@ export class TextInputView extends React.PureComponent<ITextInputViewProps, {}> 
 
     public componentWillUnmount(): void {
         if (this._element) {
-            focusManager.popFocus(this._element)
+            if (this.props.isModal) {
+                focusManager.popModal(this._element)
+            } else {
+                focusManager.popFocus(this._element)
+            }
             this._element = null
         }
     }

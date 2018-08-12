@@ -89,7 +89,7 @@ export class MenuView extends React.PureComponent<IMenuProps, {}> {
                         this._popupBody = elem
                     }}
                 >
-                    <TextInputView onChange={evt => this._onChange(evt)} />
+                    <TextInputView isModal={true} onChange={evt => this._onChange(evt)} />
                     <div className="items">
                         <div>
                             <AutoSizer disableHeight={true}>
