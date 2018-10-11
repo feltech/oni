@@ -3,6 +3,7 @@
  *
  * Helper functions for auto completion
  */
+import * as _ from "lodash"
 
 import * as Oni from "oni-api"
 import * as types from "vscode-languageserver-types"
@@ -99,6 +100,7 @@ export const doesCharacterMatchTriggerCharacters = (
     character: string,
     triggerCharacters: string[],
 ): boolean => {
+    triggerCharacters = triggerCharacters.map((word)=>word[word.length-1]) // Only final character
     return triggerCharacters.indexOf(character) >= 0
 }
 
@@ -117,6 +119,7 @@ export function getCompletionMeet(
 
     let currentPrefix = ""
 
+    // `col` is last whitespace preceding word to complete, or is trigger
     while (col >= 0 && col < line.length) {
         const currentCharacter = line[col]
 
@@ -127,10 +130,12 @@ export function getCompletionMeet(
             break
         }
 
+        // `currentPrefix` is word to complete
         currentPrefix = currentCharacter + currentPrefix
         col--
     }
 
+    // `basePos` is first character in word to complete, or next character after trigger
     const basePos = col + 1
 
     const isFromTriggerCharacter = doesCharacterMatchTriggerCharacters(
@@ -138,20 +143,50 @@ export function getCompletionMeet(
         completionTriggerCharacters,
     )
 
+    // Is there an alphanumeric character after the cursor position?
     const isCharacterAfterCursor =
         cursorColumn < line.length && line[cursorColumn].match(characterMatchRegex)
 
+    // Is the cursor currently at the end of a word/trigger?
     const shouldExpandCompletions =
         (currentPrefix.length > 0 || isFromTriggerCharacter) && !isCharacterAfterCursor
 
+    // If trigger character, complete space immediately after it, otherwise complete from second
+    // character in word.
     const positionToQuery = isFromTriggerCharacter ? basePos : basePos + 1
 
-    return {
+    let oldAlg = {
         position: basePos,
         positionToQuery,
         base: currentPrefix,
         shouldExpandCompletions,
     }
+
+    const wordRegExp = new RegExp(
+        "(?:" + characterMatchRegex.source + "+)$"
+    )
+    const triggerRegExp = new RegExp(
+        "(?:" + completionTriggerCharacters.map(_.escapeRegExp).join("|") + ")$"
+    )
+    const lineToCursor = line.slice(0, cursorColumn)
+    const wordMatch = lineToCursor.match(wordRegExp)
+    const triggerMatch = lineToCursor.match(triggerRegExp)
+
+    const word = wordMatch && wordMatch[0] || ""
+    const wordPos = wordMatch && wordMatch.index || cursorColumn
+
+    let newAlg = {
+        position: wordPos,
+        positionToQuery: triggerMatch ? cursorColumn : wordPos,
+        base: word,
+        shouldExpandCompletions: !!(
+            (triggerMatch || wordMatch) && !isCharacterAfterCursor
+        )
+    }
+
+    console.log("OLD: " + JSON.stringify(oldAlg) + "\n" + "NEW: " + JSON.stringify(newAlg))
+
+    return newAlg
 }
 
 export const convertKindToIconName = (completionKind: types.CompletionItemKind) => {

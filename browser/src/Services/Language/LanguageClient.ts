@@ -101,7 +101,13 @@ export class LanguageClient implements ILanguageClient {
             )
 
             logInfo(`Request ${requestName} - ${fileName}: start`)
-            const result = await this._connection.sendRequest<T>(requestName, args)
+            let result
+            try {
+                result = await this._connection.sendRequest<T>(requestName, args)
+            } catch (e) {
+                Log.error("[Language Client] error: " + JSON.stringify(e))
+                throw e
+            }
             logInfo(`Request ${requestName} - ${fileName}: end`)
             return result
         })

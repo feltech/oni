@@ -96,11 +96,14 @@ export function createReducer<T, FilteredT extends T>() {
 
                 const filterFunc = s.filterFunction
                 const filteredOptions = filterFunc(a.payload.items, s.filter)
+                // Ensure current selected item is within range of the newly filtered list.
+                const selectedIndex = s.selectedIndex < filteredOptions.length ? s.selectedIndex : 0
 
                 return {
                     ...s,
                     options: a.payload.items,
                     filteredOptions,
+                    selectedIndex,
                 }
             }
             case "SET_MENU_LOADING":
