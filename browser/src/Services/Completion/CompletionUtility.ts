@@ -3,7 +3,8 @@
  *
  * Helper functions for auto completion
  */
-import * as _ from "lodash"
+import * as escapeRegExp from "lodash/escapeRegExp"
+import * as memoize from "lodash/memoize"
 
 import * as Oni from "oni-api"
 import * as types from "vscode-languageserver-types"
@@ -100,7 +101,7 @@ export const doesCharacterMatchTriggerCharacters = (
     character: string,
     triggerCharacters: string[],
 ): boolean => {
-    triggerCharacters = triggerCharacters.map((word)=>word[word.length-1]) // Only final character
+    triggerCharacters = triggerCharacters.map(word => word[word.length - 1]) // Only final character
     return triggerCharacters.indexOf(character) >= 0
 }
 
@@ -162,32 +163,34 @@ export function getCompletionMeet(
         shouldExpandCompletions,
     }
 
-    const wordRegExp = new RegExp(
-        "(?:" + characterMatchRegex.source + "+)$"
-    )
-    const triggerRegExp = new RegExp(
-        "(?:" + completionTriggerCharacters.map(_.escapeRegExp).join("|") + ")$"
-    )
+    const wordRegExp = _wordRegExp(characterMatchRegex.source)
+    const triggerRegExp = _triggerRegExp(completionTriggerCharacters)
     const lineToCursor = line.slice(0, cursorColumn)
     const wordMatch = lineToCursor.match(wordRegExp)
     const triggerMatch = lineToCursor.match(triggerRegExp)
 
-    const word = wordMatch && wordMatch[0] || ""
-    const wordPos = wordMatch && wordMatch.index || cursorColumn
+    const word = (wordMatch && wordMatch[0]) || ""
+    const wordPos = (wordMatch && wordMatch.index) || cursorColumn
 
     let newAlg = {
         position: wordPos,
-        positionToQuery: triggerMatch ? cursorColumn : wordPos,
+        positionToQuery: triggerMatch ? cursorColumn : wordPos + 1,
         base: word,
-        shouldExpandCompletions: !!(
-            (triggerMatch || wordMatch) && !isCharacterAfterCursor
-        )
+        shouldExpandCompletions: !!((triggerMatch || wordMatch) && !isCharacterAfterCursor),
     }
 
     console.log("OLD: " + JSON.stringify(oldAlg) + "\n" + "NEW: " + JSON.stringify(newAlg))
 
     return newAlg
 }
+
+const _wordRegExp = memoize((characterMatch: string) => {
+    return new RegExp("(?:" + characterMatch + "+)$")
+})
+
+const _triggerRegExp = memoize((triggerCharacters: string[]) => {
+    return new RegExp("(?:" + triggerCharacters.map(escapeRegExp).join("|") + ")$")
+})
 
 export const convertKindToIconName = (completionKind: types.CompletionItemKind) => {
     switch (completionKind) {
