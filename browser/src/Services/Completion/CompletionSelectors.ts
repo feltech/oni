@@ -3,7 +3,8 @@
  *
  * Selectors are functions that take a state and derive a value from it.
  */
-import * as _ from "lodash"
+import * as isEqual from "lodash/isEqual"
+import * as omit from "lodash/omit"
 
 import { ICompletionState } from "./CompletionState"
 
@@ -65,18 +66,8 @@ export const filterCompletionOptions = (
     items: types.CompletionItem[],
     searchText: string,
 ): types.CompletionItem[] => {
-    // Language servers can return duplicate entries (e.g. cquery).
-    const uniqueItems: types.CompletionItem[] = _.uniqWith(
-        items,
-        (item1: types.CompletionItem, item2: types.CompletionItem) => {
-            // Strip sortText as it's usually different, even if all other attributes are identical.
-            const item1WithoutSortText = _.omit(item1, "sortText")
-            const item2WithoutSortText = _.omit(item2, "sortText")
-            return _.isEqual(item1WithoutSortText, item2WithoutSortText)
-        },
-    )
     if (!searchText) {
-        return uniqueItems
+        return items
     }
     if (!items || !items.length) {
         return null
@@ -84,7 +75,7 @@ export const filterCompletionOptions = (
 
     // Must start with first letter in searchText, and then be at least abbreviated by searchText.
     const filterRegEx = new RegExp("^" + searchText.split("").join(".*") + ".*")
-    const filteredOptions = uniqueItems.filter(f => {
+    const filteredOptions = items.filter(f => {
         const textToFilterOn = f.filterText || f.label
         return textToFilterOn.match(filterRegEx)
     })
@@ -105,7 +96,7 @@ export const filterCompletionOptions = (
             return -1
         } else if (itemASortText > itemBSortText) {
             return 1
-            // Otherwise sort by language server -specified sortText.
+            // Fallback to sort by language server specified sortText.
         } else if (itemA.sortText < itemB.sortText) {
             return -1
         } else if (itemA.sortText > itemB.sortText) {
@@ -113,6 +104,34 @@ export const filterCompletionOptions = (
         }
         return 0
     })
+    // Language servers can return duplicate entries (e.g. cquery).
+    const uniqueOptions: types.CompletionItem[] = _uniq(sortedOptions)
 
-    return sortedOptions
+    return uniqueOptions
+}
+
+/**
+ * Get unique completion items, assuming they're sorted so duplicates are contiguous.
+ *
+ * Adapted from https://github.com/lodash/lodash/blob/master/.internal/baseSortedUniq.js, since
+ * lodash has no `sortedUniqWith` function.
+ */
+const _uniq = (array: types.CompletionItem[]) => {
+    let seenReduced: any
+    let index = -1
+    let resIndex = 0
+
+    const { length } = array
+    const result = []
+
+    while (++index < length) {
+        const value = array[index]
+        // Omit the `sortText` which can be different even if all other attributes are the same.
+        const reduced = omit(value, "sortText")
+        if (!index || !isEqual(reduced, seenReduced)) {
+            seenReduced = reduced
+            result[resIndex++] = value
+        }
+    }
+    return result
 }
