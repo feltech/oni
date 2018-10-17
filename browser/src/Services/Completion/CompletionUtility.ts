@@ -3,6 +3,8 @@
  *
  * Helper functions for auto completion
  */
+import * as escapeRegExp from "lodash/escapeRegExp"
+import * as memoize from "lodash/memoize"
 
 import * as Oni from "oni-api"
 import * as types from "vscode-languageserver-types"
@@ -42,27 +44,6 @@ export const commitCompletion = async (
     }
 }
 
-export function getCompletionStart(
-    bufferLine: string,
-    cursorColumn: number,
-    completion: string,
-): number {
-    cursorColumn = Math.min(cursorColumn, bufferLine.length)
-
-    let x = cursorColumn
-    while (x >= 0) {
-        const subWord = bufferLine.substring(x, cursorColumn + 1)
-
-        if (completion.indexOf(subWord) === -1) {
-            break
-        }
-
-        x--
-    }
-
-    return x + 1
-}
-
 export const getInsertText = (completionItem: types.CompletionItem): string => {
     return completionItem.insertText || completionItem.label
 }
@@ -95,15 +76,12 @@ export interface CompletionMeetResult {
     shouldExpandCompletions: boolean
 }
 
-export const doesCharacterMatchTriggerCharacters = (
-    character: string,
-    triggerCharacters: string[],
-): boolean => {
-    return triggerCharacters.indexOf(character) >= 0
-}
-
 /**
- * Returns the start of the 'completion meet' along with the current base for completion
+ * Returns the start of the 'completion meet' along with the current base for completion.
+ *
+ * If cursor is after a trigger character (e.g. `.`), then query server for completions at the
+ * cursor position.  If the cursor is at the end of a (incomplete) word, query for completions
+ * after the first character of that word. If the cursor is in the middle of a word, don't query.
  */
 export function getCompletionMeet(
     line: string,
@@ -111,48 +89,33 @@ export function getCompletionMeet(
     characterMatchRegex: RegExp,
     completionTriggerCharacters: string[],
 ): CompletionMeetResult {
-    // Clamp column to within string bounds
-    let col = Math.max(cursorColumn - 1, 0)
-    col = Math.min(col, line.length - 1)
-
-    let currentPrefix = ""
-
-    while (col >= 0 && col < line.length) {
-        const currentCharacter = line[col]
-
-        if (
-            !currentCharacter.match(characterMatchRegex) ||
-            doesCharacterMatchTriggerCharacters(currentCharacter, completionTriggerCharacters)
-        ) {
-            break
-        }
-
-        currentPrefix = currentCharacter + currentPrefix
-        col--
-    }
-
-    const basePos = col + 1
-
-    const isFromTriggerCharacter = doesCharacterMatchTriggerCharacters(
-        line[basePos - 1],
-        completionTriggerCharacters,
-    )
-
+    // Is there an alphanumeric character after the cursor position?
     const isCharacterAfterCursor =
         cursorColumn < line.length && line[cursorColumn].match(characterMatchRegex)
+    const wordRegExp = _wordRegExp(characterMatchRegex.source)
+    const triggerRegExp = _triggerRegExp(completionTriggerCharacters)
+    const lineToCursor = line.slice(0, cursorColumn)
+    const wordMatch = lineToCursor.match(wordRegExp)
+    const triggerMatch = lineToCursor.match(triggerRegExp)
 
-    const shouldExpandCompletions =
-        (currentPrefix.length > 0 || isFromTriggerCharacter) && !isCharacterAfterCursor
-
-    const positionToQuery = isFromTriggerCharacter ? basePos : basePos + 1
+    const word = (wordMatch && wordMatch[0]) || ""
+    const wordPos = (wordMatch && wordMatch.index) || cursorColumn
 
     return {
-        position: basePos,
-        positionToQuery,
-        base: currentPrefix,
-        shouldExpandCompletions,
+        position: wordPos,
+        positionToQuery: triggerMatch ? cursorColumn : wordPos + 1,
+        base: word,
+        shouldExpandCompletions: !!((triggerMatch || wordMatch) && !isCharacterAfterCursor),
     }
 }
+
+const _wordRegExp = memoize((characterMatch: string) => {
+    return new RegExp("(?:" + characterMatch + "+)$")
+})
+
+const _triggerRegExp = memoize((triggerCharacters: string[]) => {
+    return new RegExp("(?:" + triggerCharacters.map(escapeRegExp).join("|") + ")$")
+})
 
 export const convertKindToIconName = (completionKind: types.CompletionItemKind) => {
     switch (completionKind) {
